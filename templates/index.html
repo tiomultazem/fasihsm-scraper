@@ -11,33 +11,44 @@
                 <span class="badge bg-secondary">User belum diimpor</span>
             {% endif %}
         </div>
+
+        <!-- OTP Section: muncul hanya saat login dan butuh OTP -->
+        {% if not is_running and session.get('needs_otp') %}
+        <div id="otp-section" class="mb-3">
+            <form action="/fasihsm-fetcher/login-otp" method="POST">
+                <div class="input-group justify-content-center" style="max-width: 320px; margin: 0 auto;">
+                    <input type="text" name="otp" class="form-control text-center"
+                           maxlength="6" placeholder="Kode OTP 6 digit"
+                           autocomplete="one-time-code" inputmode="numeric"
+                           autofocus required>
+                    <button type="submit" class="btn btn-success">Enter OTP</button>
+                </div>
+                <small class="text-muted mt-1 d-block">Masukkan kode dari aplikasi authenticator</small>
+            </form>
+        </div>
+        {% endif %}
+
         <form action="/fasihsm-fetcher/import-env" method="POST">
             <button type="submit" class="btn btn-outline-danger">Import .env</button>
         </form>
     </div>
 </div>
 
-<!-- Card Control (Berjejer Tiga) -->
+<!-- Card Control -->
 <div class="card shadow">
     <div class="card-header bg-red-gradient text-white text-center">Fasih Session Control</div>
     <div class="card-body">
         <div class="row g-2">
-            <div class="col-md-4">
-                <a href="/fasihsm-fetcher/open-chrome" 
+            <div class="col-md-6">
+                <a href="{{ url_for('login') }}"
                    class="btn btn-primary w-100 btn-lg {% if is_running %}disabled{% endif %}">
-                   Buka Chrome
+                   🔐 Login
                 </a>
             </div>
-            <div class="col-md-4">
-                <a href="/fasihsm-fetcher/close-chrome" 
+            <div class="col-md-6">
+                <a href="{{ url_for('logout') }}"
                    class="btn btn-danger w-100 btn-lg {% if not is_running %}disabled{% endif %}">
-                   Tutup Chrome
-                </a>
-            </div>
-            <div class="col-md-4">
-                <a href="/fasihsm-fetcher/interrupt" 
-                   class="btn btn-warning w-100 btn-lg">
-                   Interupsi (Kill)
+                   🚪 Logout
                 </a>
             </div>
         </div>

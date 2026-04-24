@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-red-gradient text-white text-center fw-bold">Import Token Sesi Fasih-SM</div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">
+            Login ke <a href="https://fasih-sm.bps.go.id" target="_blank">fasih-sm.bps.go.id</a> di browser,
+            lalu buka DevTools (F12) dan ambil:
+            <ul class="small text-muted mt-1">
+                <li><b>Bearer</b>: tab Application → Local Storage → key <code>token</code></li>
+                <li><b>CSRF</b>: tab Application → Cookies → <code>XSRF-TOKEN</code> (URL-decoded)</li>
+                <li><b>Cookies</b>: tab Network → pilih request apapun ke fasih-sm.bps.go.id → header <code>Cookie</code></li>
+                <li><b>User Agent</b>: Console → ketik <code>navigator.userAgent</code></li>
+            </ul>
+        </p>
+        <form method="POST">
+            <div class="mb-3">
+                <label class="form-label fw-bold">Bearer Token <span class="text-danger">*</span></label>
+                <input type="text" name="bearer" class="form-control font-monospace" placeholder="eyJhbGci..." required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-bold">XSRF-TOKEN (CSRF)</label>
+                <input type="text" name="csrf" class="form-control font-monospace" placeholder="xxxxxx-xxxx-...">
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-bold">Cookies</label>
+                <textarea name="cookies" class="form-control font-monospace" rows="3"
+                    placeholder="XSRF-TOKEN=xxx; fasihsm_session=yyy; ..."></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-bold">User Agent</label>
+                <input type="text" name="user_agent" class="form-control font-monospace"
+                    placeholder="Mozilla/5.0 ...">
+            </div>
+            <button type="submit" class="btn btn-danger w-100">Simpan Token & Aktifkan Sesi</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
