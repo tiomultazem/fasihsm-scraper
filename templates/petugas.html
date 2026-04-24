@@ -1,0 +1,45 @@
+{# ── Tabel Petugas ── #}
+{% if meta and petugas and petugas.roles %}
+<div class="card shadow d-flex flex-column" style="height: 100%;">
+    <div class="card-header bg-dark text-white d-flex align-items-center gap-2 flex-wrap flex-shrink-0">
+        <span class="me-2">Data Petugas:</span>
+        {% for role in petugas.roles %}
+        {% set rows = petugas.data[role.key] %}
+        <button
+            class="btn btn-sm {% if loop.first %}btn-info active{% else %}btn-outline-info{% endif %}"
+            onclick="switchTab('{{ role.key }}')"
+            id="btn-{{ role.key }}">
+            {{ role.label }} <span class="badge bg-dark ms-1">{{ rows | length }}</span>
+        </button>
+        {% endfor %}
+    </div>
+
+    {% for role in petugas.roles %}
+    {% set rows = petugas.data[role.key] %}
+    <div id="tab-{{ role.key }}" class="tab-pane-petugas flex-grow-1 overflow-auto" {% if not loop.first %}style="display:none;"{% endif %}>
+        <table class="table table-hover table-striped mb-0" style="min-width: 600px;">
+            <thead class="table-light sticky-top">
+                <tr>
+                    <th>No</th>
+                    <th class="text-nowrap">Nama</th>
+                    <th>Email</th>
+                    <th>Wilayah</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in rows %}
+                <tr>
+                    <td>{{ p.no }}</td>
+                    <td class="text-nowrap">{{ p.nama }}</td>
+                    <td class="small text-muted">{{ p.email }}</td>
+                    <td class="font-monospace small">{{ p.wilayah }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-center py-4 text-muted"><i>Tidak ada data {{ role.label }}.</i></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

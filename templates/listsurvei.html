@@ -1,0 +1,231 @@
+{% extends 'base.html' %}
+{% block main_class %}container-fluid px-3 py-2{% endblock %}
+{% block main_style %}display: flex; flex-direction: column; min-height: 0;{% endblock %}
+{% block row_class %}row w-100 flex-grow-1{% endblock %}
+{% block col_class %}col-12{% endblock %}
+
+{% block content %}
+<div class="row g-3" style="height: calc(100dvh - 220px); min-height: 0;">
+
+    {# ══ KOLOM 1 ══ #}
+    <div class="col-md-4 d-flex flex-column gap-2" style="min-height:0; height:100%;">
+
+        <div class="btn-group w-100 shadow-sm flex-shrink-0">
+            <a href="{{ url_for('listsurvei', category='Pencacahan') }}"
+               class="btn btn-outline-primary {% if active_cat == 'Pencacahan' %}active{% endif %}">Pencacahan</a>
+            <a href="{{ url_for('listsurvei', category='Pelatihan') }}"
+               class="btn btn-outline-primary {% if active_cat == 'Pelatihan' %}active{% endif %}">Pelatihan</a>
+            <a href="{{ url_for('listsurvei', category='Ujicoba') }}"
+               class="btn btn-outline-primary {% if active_cat == 'Ujicoba' %}active{% endif %}">Uji Coba</a>
+        </div>
+
+        <div class="card shadow flex-shrink-0">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <span>Daftar Survei — {{ active_cat if active_cat else 'Pilih Kategori' }}</span>
+                {% if surveys %}<span class="badge bg-info">{{ surveys|length }} Data</span>{% endif %}
+            </div>
+            <div class="card-body p-0 overflow-auto" style="max-height:25vh;">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>No</th>
+                            <th class="text-nowrap">Judul Survei</th>
+                            <th>ID</th>
+                            <th>Unit</th>
+                            <th class="text-nowrap">Dibuat Pada</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in surveys %}
+                        <tr>
+                            <td>{{ s.no }}</td>
+                            <td class="text-nowrap">{{ s.judul_survei }}</td>
+                            <td class="font-monospace small">{{ s.id }}</td>
+                            <td>{{ s.unit }}</td>
+                            <td class="text-nowrap small text-muted">{{ s.dibuat_pada }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center py-4 text-muted"><i>Data tidak ditemukan.</i></td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card shadow flex-grow-1 d-flex flex-column" style="min-height:0;">
+            <div class="card-header bg-dark text-white flex-shrink-0">
+                <strong>{% if meta %}METADATA: {{ meta.judul }}{% else %}Metadata{% endif %}</strong>
+            </div>
+            <div class="card-body p-0 overflow-auto flex-grow-1" style="min-height:0;">
+                {% if meta %}
+                <table class="table table-bordered table-hover mb-0">
+                    <tbody>
+                        <tr><th class="table-light text-nowrap" style="width:40%">Judul Survei</th><td>{{ meta.judul }}</td></tr>
+                        <tr><th class="table-light text-nowrap">Tipe</th><td>{{ meta.tipe }}</td></tr>
+                        <tr><th class="table-light text-nowrap">Mode</th><td>{{ meta.mode }}</td></tr>
+                        <tr><th class="table-light text-nowrap">Wilayah Versi</th><td>{{ meta.wilayah_ver }}</td></tr>
+                        <tr><th class="table-light text-nowrap">Level Wilayah</th><td>{{ meta.level_wilayah }}</td></tr>
+                        <tr><th class="table-light text-nowrap">Jenis Panel</th><td>{{ meta.jenis_panel }}</td></tr>
+                        <tr><th class="table-light text-nowrap">Jenis Pencacah</th><td>{{ meta.jenis_pencacah }}</td></tr>
+                        <tr><th class="table-light text-nowrap">Periode Aktif</th><td>{{ meta.periode_aktif }}</td></tr>
+                        <tr><th class="table-light text-nowrap">Tanggal Mulai</th><td>{{ meta.tgl_mulai }}</td></tr>
+                        <tr><th class="table-light text-nowrap">Tanggal Selesai</th><td>{{ meta.tgl_selesai }}</td></tr>
+                        <tr><th class="table-light text-nowrap">ID Periode</th><td class="font-monospace small">{{ meta.id_periode }}</td></tr>
+                    </tbody>
+                </table>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# ══ KOLOM 2 ══ #}
+    <div class="col-md-4 d-flex flex-column gap-2" style="min-height:0; height:100%;">
+
+        {% if surveys %}
+        <div class="card shadow flex-shrink-0">
+            <div class="card-header bg-dark text-white">Pilih Survei</div>
+            <div class="card-body py-2">
+                <select class="form-select" id="surveySelect" onchange="pilihSurvei(this.value)">
+                    <option value="">-- Pilih survei untuk melihat metadata --</option>
+                    {% for s in surveys %}
+                    <option value="{{ s.id }}" {% if s.id == selected_id %}selected{% endif %}>
+                        {{ s.no }}. {{ s.judul_survei }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card shadow flex-grow-1 d-flex flex-column" style="min-height:0;">
+            {% if meta and petugas and petugas.roles %}
+            <div class="card-header bg-dark text-white d-flex align-items-center gap-2 flex-wrap flex-shrink-0">
+                <span class="me-2">Data Petugas:</span>
+                {% for role in petugas.roles %}
+                {% set rows = petugas.data[role.key] %}
+                <button class="btn btn-sm {% if loop.first %}btn-info active{% else %}btn-outline-info{% endif %}"
+                        onclick="switchTab('{{ role.key }}')" id="btn-{{ role.key }}">
+                    {{ role.label }} <span class="badge bg-dark ms-1">{{ rows|length }}</span>
+                </button>
+                {% endfor %}
+            </div>
+            {% for role in petugas.roles %}
+            {% set rows = petugas.data[role.key] %}
+            <div id="tab-{{ role.key }}"
+                 class="tab-pane-petugas flex-grow-1 overflow-auto"
+                 style="min-height:0; {% if not loop.first %}display:none;{% endif %}">
+                <table class="table table-hover table-striped mb-0" style="min-width:600px;">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>No</th>
+                            <th class="text-nowrap">Nama</th>
+                            <th>Email</th>
+                            <th>Wilayah</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in rows %}
+                        <tr>
+                            <td>{{ p.no }}</td>
+                            <td class="text-nowrap">{{ p.nama }}</td>
+                            <td class="small text-muted">{{ p.email }}</td>
+                            <td class="font-monospace small">{{ p.wilayah }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center py-4 text-muted"><i>Tidak ada data.</i></td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="card-header bg-dark text-white flex-shrink-0">Data Petugas</div>
+            <div class="card-body flex-grow-1 d-flex align-items-center justify-content-center text-muted" style="min-height:0;">
+                <i>Pilih survei terlebih dahulu.</i>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ══ KOLOM 3 ══ #}
+    <div class="col-md-4 d-flex flex-column" style="min-height:0; height:100%;">
+        <div class="card shadow flex-grow-1 d-flex flex-column" style="min-height:0;">
+            <div class="card-header bg-dark text-white d-flex align-items-center justify-content-between flex-shrink-0">
+                <span>Ringkasan Sampel</span>
+                <span class="badge bg-info" id="sampelBadge" style="display:none;"></span>
+            </div>
+            <div class="card-body py-2 flex-shrink-0">
+                <div class="row g-2 align-items-end">
+                    <div class="col-auto">
+                        <label class="form-label mb-1 small">Jumlah Sampel</label>
+                        <input type="number" id="nTarget" class="form-control form-control-sm" value="50" min="1" style="width:85px">
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label mb-1 small">Batch</label>
+                        <select id="batchSize" class="form-select form-select-sm" style="width:75px">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label mb-1 small">Timezone</label>
+                        <select id="tzSelect" class="form-select form-select-sm" style="width:80px">
+                            <option value="WIB">WIB</option>
+                            <option value="WITA" selected>WITA</option>
+                            <option value="WIT">WIT</option>
+                        </select>
+                    </div>
+                        <div class="col-auto d-flex align-items-end gap-2">
+                            <div>
+                                <label class="form-label mb-1 small">Filter Status</label>
+                                <select id="statusSelect" class="form-select form-select-sm" style="min-width:160px">
+                                    <option value="SEMUA">— Pilih survei dulu —</option>
+                                </select>
+                            </div>
+                            <button id="btnFetchSampel" class="btn btn-primary btn-sm" onclick="fetchSampel()">Tampilkan</button>
+                            <button id="btnDownloadDetail" class="btn btn-success btn-sm" onclick="downloadDetail()" disabled>⬇ CSV</button>
+                            <span id="downloadProgress" class="small text-muted font-monospace" style="display:none;"></span>
+                        </div>
+                </div>
+            </div>
+            <div class="flex-grow-1 overflow-auto" style="min-height:0;">
+                <table class="table table-hover table-striped mb-0" style="min-width:1100px;">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>No</th>
+                            <th class="text-nowrap">ID SLS</th>
+                            <th class="text-nowrap">Kepala Keluarga</th>
+                            <th>Anggota KK</th>
+                            <th>Alamat</th>
+                            <th class="text-nowrap">Status Dok</th>
+                            <th>Kec</th>
+                            <th>Des</th>
+                            <th>SLS</th>
+                            <th>Sub SLS</th>
+                            <th class="text-nowrap">Pencacah</th>
+                            <th class="text-nowrap">Dibuat</th>
+                            <th class="text-nowrap">Dimodifikasi</th>
+                            <th>Sample ID</th>
+                            <th>Lat</th>
+                            <th>Lon</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sampelTbody">
+                        <tr><td colspan="16" class="text-center py-4 text-muted"><i>Belum ada data. Klik Tampilkan.</i></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const currentPeriodId = "{{ meta.id_periode if meta else '' }}";
+    const surveyName      = "{{ meta.judul if meta else 'rincian_sampel' }}";
+    const activeCategory  = "{{ active_cat }}";
+</script>
+{% include 'surveijs.html' %}
+{% endblock %}

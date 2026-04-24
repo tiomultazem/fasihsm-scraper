@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Card Dotenv -->
+<div class="card shadow-sm mb-4">
+    <div class="card-body text-center">
+        <div class="mb-3">
+            {% if user %}
+                <span class="badge bg-success">User saat ini: {{ user }}</span>
+            {% else %}
+                <span class="badge bg-secondary">User belum diimpor</span>
+            {% endif %}
+        </div>
+        <form action="/fasihsm-fetcher/import-env" method="POST">
+            <button type="submit" class="btn btn-outline-danger">Import .env</button>
+        </form>
+    </div>
+</div>
+
+<!-- Card Control (Berjejer Tiga) -->
+<div class="card shadow">
+    <div class="card-header bg-red-gradient text-white text-center">Fasih Session Control</div>
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-4">
+                <a href="/fasihsm-fetcher/open-chrome" 
+                   class="btn btn-primary w-100 btn-lg {% if is_running %}disabled{% endif %}">
+                   Buka Chrome
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="/fasihsm-fetcher/close-chrome" 
+                   class="btn btn-danger w-100 btn-lg {% if not is_running %}disabled{% endif %}">
+                   Tutup Chrome
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="/fasihsm-fetcher/interrupt" 
+                   class="btn btn-warning w-100 btn-lg">
+                   Interupsi (Kill)
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

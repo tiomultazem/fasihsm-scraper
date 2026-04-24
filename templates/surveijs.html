@@ -1,0 +1,151 @@
+<script>
+let lastFetchedIds = [];
+
+function loadSampelStatus(periodId) {
+    const sel = document.getElementById('statusSelect');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Memuat status...</option>';
+    fetch(`/fasihsm-fetcher/api/sampel-status?period_id=${periodId}`)
+        .then(r => r.json())
+        .then(data => {
+            sel.innerHTML = `<option value="SEMUA">Semua (${data.total})</option>`;
+            (data.statuses || []).forEach(s => {
+                sel.innerHTML += `<option value="${s.keyAggregation}">${s.keyAggregation} (${s.docCount})</option>`;
+            });
+        })
+        .catch(() => { sel.innerHTML = '<option value="SEMUA">Semua</option>'; });
+}
+
+function pilihSurvei(surveyId) {
+    if (!surveyId) return;
+    window.location.href = `/fasihsm-fetcher/listsurvei/${activeCategory}/${surveyId}`;
+}
+
+function switchTab(key) {
+    document.querySelectorAll('.tab-pane-petugas').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('[id^="btn-"]').forEach(el => {
+        el.classList.remove('btn-info', 'active');
+        el.classList.add('btn-outline-info');
+    });
+    document.getElementById('tab-' + key).style.display = '';
+    const btn = document.getElementById('btn-' + key);
+    btn.classList.remove('btn-outline-info');
+    btn.classList.add('btn-info', 'active');
+}
+
+function fetchSampel() {
+    if (!currentPeriodId) { alert('Pilih survei terlebih dahulu.'); return; }
+    const n_target   = parseInt(document.getElementById('nTarget').value) || 50;
+    const batch_size = parseInt(document.getElementById('batchSize').value) || 25;
+    const status     = document.getElementById('statusSelect').value || 'SEMUA';
+    const tz         = document.getElementById('tzSelect').value || 'WITA';
+    const btn        = document.getElementById('btnFetchSampel');
+    // const tblWrap    = document.getElementById('sampelTableWrap');
+    const tbody      = document.getElementById('sampelTbody');
+    const badge      = document.getElementById('sampelBadge');
+
+    btn.disabled = true;
+    btn.textContent = 'Mengambil data...';
+    // tblWrap.style.display = 'none';
+
+    fetch('/fasihsm-fetcher/api/sampel-fetch', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({period_id: currentPeriodId, n_target, batch_size, status_alias: status, tz})
+    })
+    .then(r => r.json())
+    .then(data => {
+        const rows = data.rows || [];
+        lastFetchedIds = rows.map(r => r.sample_id).filter(Boolean);
+        document.getElementById('btnDownloadDetail').disabled = lastFetchedIds.length === 0;
+        badge.textContent = rows.length + ' Data';
+        badge.style.display = rows.length ? '' : 'none';
+        tbody.innerHTML = rows.length === 0
+            ? '<tr><td colspan="16" class="text-center py-4 text-muted"><i>Tidak ada data.</i></td></tr>'
+            : rows.map(r => `
+                <tr>
+                    <td>${r.no}</td>
+                    <td class="font-monospace small text-nowrap">${r.id_sls}</td>
+                    <td class="text-nowrap">${r.kk}</td>
+                    <td class="text-nowrap">${r.anggota}</td>
+                    <td class="small">${r.alamat}</td>
+                    <td class="small text-nowrap">${r.status_dok}</td>
+                    <td class="small text-nowrap">${r.kec}</td>
+                    <td class="small text-nowrap">${r.des}</td>
+                    <td class="small">${r.sls}</td>
+                    <td class="small">${r.sub_sls}</td>
+                    <td class="small text-nowrap">${r.pencacah}</td>
+                    <td class="small text-nowrap text-muted">${r.created}</td>
+                    <td class="small text-nowrap text-muted">${r.modified}</td>
+                    <td class="font-monospace small text-nowrap">${r.sample_id}</td>
+                    <td class="small">${r.lat}</td>
+                    <td class="small">${r.lon}</td>
+                </tr>`).join('');
+        // tblWrap.style.display = '';
+    })
+    .catch(err => { alert('Gagal mengambil data: ' + err); })
+    .finally(() => {
+        btn.disabled = false;
+        btn.textContent = 'Tampilkan';
+    });
+}
+
+function downloadDetail() {
+    if (!lastFetchedIds.length) { alert('Tampilkan ringkasan sampel dulu.'); return; }
+    const btn      = document.getElementById('btnDownloadDetail');
+    const progress = document.getElementById('downloadProgress');
+    const total    = lastFetchedIds.length;
+    btn.disabled = true;
+    progress.textContent = '0/' + total;
+    progress.style.display = '';
+    fetch('/fasihsm-fetcher/api/sampel-detail-csv', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({sample_ids: lastFetchedIds, survey_name: surveyName})
+    })
+    .then(res => {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        function read() {
+            return reader.read().then(({done, value}) => {
+                if (done) return;
+                buffer += decoder.decode(value, {stream: true});
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop();
+                for (const part of parts) {
+                    const line = part.replace(/^data: /, '').trim();
+                    if (!line) continue;
+                    try {
+                        const msg = JSON.parse(line);
+                        if (msg.progress !== undefined) {
+                            progress.textContent = msg.progress + '/' + total;
+                        }
+                        if (msg.done) {
+                            if (msg.error) {
+                                alert('Error: ' + msg.error);
+                                btn.disabled = false;
+                            } else {
+                                progress.textContent = total + '/' + total + ' ✓';
+                                window.location.href = `/fasihsm-fetcher/api/sampel-detail-download/${msg.token}`;
+                                setTimeout(() => { btn.disabled = false; }, 2000);
+                            }
+                        }
+                    } catch(e) {}
+                }
+                return read();
+            });
+        }
+        return read();
+    })
+    .catch(err => {
+        alert('Gagal download: ' + err);
+        btn.disabled = false;
+        progress.style.display = 'none';
+    });
+}
+
+if (typeof currentPeriodId !== 'undefined' && currentPeriodId) {
+    loadSampelStatus(currentPeriodId);
+}
+</script>

@@ -1,0 +1,24 @@
+{% if meta %}
+<div class="card shadow d-flex flex-column" style="height:100%;">
+    <div class="card-header bg-dark text-white flex-shrink-0">
+        <strong>METADATA: {{ meta.judul }}</strong>
+    </div>
+    <div class="card-body p-0 flex-grow-1 overflow-auto">
+        <table class="table table-bordered table-hover mb-0">
+            <tbody>
+                <tr><th class="table-light text-nowrap" style="width:35%">Judul Survei</th><td>{{ meta.judul }}</td></tr>
+                <tr><th class="table-light text-nowrap">Tipe</th><td>{{ meta.tipe }}</td></tr>
+                <tr><th class="table-light text-nowrap">Mode</th><td>{{ meta.mode }}</td></tr>
+                <tr><th class="table-light text-nowrap">Wilayah Versi</th><td>{{ meta.wilayah_ver }}</td></tr>
+                <tr><th class="table-light text-nowrap">Level Wilayah</th><td>{{ meta.level_wilayah }}</td></tr>
+                <tr><th class="table-light text-nowrap">Jenis Panel</th><td>{{ meta.jenis_panel }}</td></tr>
+                <tr><th class="table-light text-nowrap">Jenis Pencacah</th><td>{{ meta.jenis_pencacah }}</td></tr>
+                <tr><th class="table-light text-nowrap">Periode Aktif</th><td>{{ meta.periode_aktif }}</td></tr>
+                <tr><th class="table-light text-nowrap">Tanggal Mulai</th><td>{{ meta.tgl_mulai }}</td></tr>
+                <tr><th class="table-light text-nowrap">Tanggal Selesai</th><td>{{ meta.tgl_selesai }}</td></tr>
+                <tr><th class="table-light text-nowrap">ID Periode</th><td class="font-monospace small">{{ meta.id_periode }}</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}

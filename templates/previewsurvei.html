@@ -1,0 +1,73 @@
+{# ── Form & Tabel Sampel ── #}
+{% if meta %}
+<div class="card shadow d-flex flex-column" style="height: 100%;">
+    <div class="card-header bg-dark text-white d-flex align-items-center justify-content-between flex-wrap gap-2 flex-shrink-0">
+        <span>Ringkasan Sampel</span>
+        <span class="badge bg-info" id="sampelBadge" style="display:none;"></span>
+    </div>
+    <div class="card-body py-2 flex-shrink-0">
+        <div class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label mb-1 small">Jumlah Sampel</label>
+                <input type="number" id="nTarget" class="form-control form-control-sm" value="50" min="1" style="width:90px">
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-1 small">Batch</label>
+                <select id="batchSize" class="form-select form-select-sm" style="width:80px">
+                    <option value="10">10</option>
+                    <option value="25" selected>25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-1 small">Timezone</label>
+                <select id="tzSelect" class="form-select form-select-sm" style="width:80px">
+                    <option value="WIB">WIB</option>
+                    <option value="WITA" selected>WITA</option>
+                    <option value="WIT">WIT</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-1 small">Filter Status</label>
+                <select id="statusSelect" class="form-select form-select-sm" style="min-width:160px">
+                    <option value="SEMUA">— Pilih survei dulu —</option>
+                </select>
+            </div>
+            <div class="col-auto d-flex gap-2 align-items-end">
+                <button id="btnFetchSampel" class="btn btn-primary btn-sm" onclick="fetchSampel()">Tampilkan</button>
+                <button id="btnDownloadDetail" class="btn btn-success btn-sm" onclick="downloadDetail()" disabled>⬇ CSV</button>
+                <span id="downloadProgress" class="small text-muted font-monospace" style="display:none;"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex-grow-1 overflow-auto">
+        <table class="table table-hover table-striped mb-0" style="min-width:1100px;">
+            <thead class="table-light sticky-top">
+                <tr>
+                    <th>No</th>
+                    <th class="text-nowrap">ID SLS</th>
+                    <th class="text-nowrap">Kepala Keluarga</th>
+                    <th>Anggota KK</th>
+                    <th>Alamat</th>
+                    <th class="text-nowrap">Status Dok</th>
+                    <th>Kec</th>
+                    <th>Des</th>
+                    <th>SLS</th>
+                    <th>Sub SLS</th>
+                    <th class="text-nowrap">Pencacah</th>
+                    <th class="text-nowrap">Dibuat</th>
+                    <th class="text-nowrap">Dimodifikasi</th>
+                    <th>Sample ID</th>
+                    <th>Lat</th>
+                    <th>Lon</th>
+                </tr>
+            </thead>
+            <tbody id="sampelTbody">
+                <tr><td colspan="16" class="text-center py-4 text-muted"><i>Belum ada data. Klik Tampilkan.</i></td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
