@@ -861,4 +861,126 @@ function updateDownloadButtonsState(hasData) {
         }
     }
 }
+
+function openLinkPreviewModal() {
+    const modal = new bootstrap.Modal(document.getElementById('linkPreviewModal'));
+    const textarea = document.getElementById('linkPreviewTextarea');
+    textarea.value = '';
+    document.getElementById('linkPreviewCount').textContent = '';
+    modal.show();
+
+    // Live count links saat user paste/type
+    textarea.oninput = function() {
+        const lines = this.value.split('\n').filter(l => l.trim().match(/\/assignment\/.+\/.+/));
+        document.getElementById('linkPreviewCount').textContent =
+            lines.length > 0 ? `${lines.length} link terdeteksi` : '';
+    };
+}
+
+function fetchPreviewFromLinks() {
+    const textarea = document.getElementById('linkPreviewTextarea');
+    const lines = textarea.value.split('\n').map(l => l.trim()).filter(Boolean);
+
+    // Extract assignment_id dari URL
+    const assignmentIds = [];
+    const linkPattern = /\/assignment\/[^\/]+\/([0-9a-f\-]{36})/i;
+
+    for (const line of lines) {
+        const match = line.match(linkPattern);
+        if (match) {
+            assignmentIds.push(match[1]);
+        }
+    }
+
+    if (assignmentIds.length === 0) {
+        Swal.fire('Error', 'Tidak ada link valid yang terdeteksi. Pastikan format: .../assignment/{survey_id}/{assignment_id}/edit', 'error');
+        return;
+    }
+
+    // Close modal
+    bootstrap.Modal.getInstance(document.getElementById('linkPreviewModal')).hide();
+
+    // Show progress
+    const btn = document.getElementById('btnFetchLinkPreview');
+    btn.disabled = true;
+    showProgress(true, `Mengambil data dari ${assignmentIds.length} link...`, 0);
+
+    fetch('/fasihsm-fetcher/api/preview-from-links', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            assignment_ids: assignmentIds,
+            survey_id: currentSurveyId,
+            survey_name: surveyName
+        })
+    })
+    .then(res => {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        const total = assignmentIds.length;
+
+        function read() {
+            return reader.read().then(({done, value}) => {
+                if (done) return;
+                buffer += decoder.decode(value, {stream: true});
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop();
+                for (const part of parts) {
+                    const line = part.replace(/^data: /, '').trim();
+                    if (!line) continue;
+                    try {
+                        const msg = JSON.parse(line);
+                        if (msg.progress !== undefined) {
+                            const pct = total ? (Number(msg.progress) / total) * 100 : 0;
+                            showProgress(true, `Mengambil data: ${msg.progress}/${total}`, pct);
+                        }
+                        if (msg.done) {
+                            showProgress(false);
+                            btn.disabled = false;
+                            if (msg.error) {
+                                Swal.fire('Error', msg.error, 'error');
+                            } else {
+                                const rows = msg.rows || [];
+                                if (rows.length === 0) {
+                                    Swal.fire('Info', 'Tidak ada data yang berhasil diambil dari link tersebut.', 'info');
+                                    return;
+                                }
+                                const context = {
+                                    version: 1,
+                                    exportedAt: new Date().toISOString(),
+                                    surveyId: currentSurveyId,
+                                    periodId: currentPeriodId,
+                                    surveyName: surveyName,
+                                    customColumns: customColumns || [],
+                                    regionLevels: regionLevels || [],
+                                    rows: rows,
+                                    isFullFetched: false,
+                                    totalRows: rows.length
+                                };
+                                applyPreviewContext(context);
+                                Swal.fire({
+                                    icon: 'success',
+                                    title: 'Berhasil',
+                                    text: `${rows.length} data sampel berhasil diambil dari ${total} link.`,
+                                    timer: 3000,
+                                    showConfirmButton: true
+                                });
+                            }
+                        }
+                    } catch(e) {}
+                }
+                return read();
+            });
+        }
+        return read();
+    })
+    .catch(err => {
+        showProgress(false);
+        btn.disabled = false;
+        Swal.fire('Error', 'Gagal mengambil data: ' + err, 'error');
+    });
+}
+
 </script>
+

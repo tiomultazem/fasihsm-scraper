@@ -42,7 +42,13 @@
         <div class="vr d-none d-sm-block align-self-center mx-1" style="height: 20px; opacity: 0.25;"></div>
 
         <input type="file" id="previewImportInput" accept=".json,application/json" multiple style="display:none;" onchange="handlePreviewImport(event)">
-        <button id="btnUploadPreview" class="btn btn-outline-primary btn-sm" onclick="triggerPreviewImport()">Upload Preview JSON</button>
+        <div class="dropdown d-inline-block">
+            <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">Upload Preview</button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="#" onclick="triggerPreviewImport(); return false;">📁 Upload Preview JSON</a></li>
+                <li><a class="dropdown-item" href="#" onclick="openLinkPreviewModal(); return false;">🔗 Copas Link Rincian Sampel</a></li>
+            </ul>
+        </div>
         
         <div class="form-check form-switch mb-0 d-inline-flex align-items-center me-1" style="gap: 5px; height: 31px;">
             <input class="form-check-input mb-0" type="checkbox" id="chkAppendFilter" style="cursor: pointer;" checked>
@@ -126,3 +132,26 @@
     </div>
 </div>
 
+<!-- Modal Copas Link Rincian Sampel -->
+<div class="modal fade" id="linkPreviewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Copas Link Rincian Sampel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label small text-muted">
+                    Tempel daftar link rincian sampel (satu link per baris):
+                </label>
+                <textarea id="linkPreviewTextarea" class="form-control font-monospace" rows="10"
+                    placeholder="https://fasih-sm.bps.go.id/app/assignment/.../xxx-xxx/edit&#10;https://fasih-sm.bps.go.id/app/assignment/.../yyy-yyy/edit"></textarea>
+                <div id="linkPreviewCount" class="small text-muted mt-1"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                <button type="button" id="btnFetchLinkPreview" class="btn btn-primary" onclick="fetchPreviewFromLinks()">Unduh Preview</button>
+            </div>
+        </div>
+    </div>
+</div>
