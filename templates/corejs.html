@@ -196,14 +196,11 @@ function toggleFilters() {
     if (gWilayah) gWilayah.style.display = 'flex';
     if (gPencacah) gPencacah.style.display = 'block';
 
+    // Bangun struktur dropdown wilayah (tanpa fetch data — fetch hanya saat user interaksi)
     if (typeof initRegionFilters === 'function') {
         initRegionFilters();
     }
-    if (document.getElementById('pencacahMenu') && document.getElementById('pencacahMenu').querySelectorAll('input').length <= 1) {
-        if (typeof loadPencacah === 'function') {
-            loadPencacah();
-        }
-    }
+    // loadPencacah TIDAK dipanggil otomatis — user harus klik tombol "Muat Petugas"
     if (typeof applyLocalSampelFiltersIfCached === 'function') {
         applyLocalSampelFiltersIfCached();
     }

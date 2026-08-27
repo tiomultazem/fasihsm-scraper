@@ -2,15 +2,21 @@
     <div class="d-flex align-items-end gap-2 flex-wrap" id="filterContainer">
         <!-- Status Filter Group -->
         <div class="col-auto d-flex align-items-end gap-2" id="filterStatusGroup">
-            <button id="btnRefreshStatus" class="btn btn-outline-secondary btn-sm" onclick="refreshSampelStatus()"
-                title="Refresh status">↻</button>
-            <div class="dropdown">
-                <button class="btn btn-outline-secondary bg-body btn-sm dropdown-toggle text-start text-truncate" type="button" id="statusBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" style="min-width:160px; max-width: 200px;">
-                    — Pilih survei dulu —
-                </button>
-                <ul class="dropdown-menu shadow" id="statusMenu" style="max-height: 300px; overflow-y: auto;">
-                    <li><label class="dropdown-item text-muted"><em>— Pilih survei dulu —</em></label></li>
-                </ul>
+            <!-- Tombol muat status: hilang setelah diklik, digantikan dropdown -->
+            <button id="btnLoadStatus" class="btn btn-outline-secondary btn-sm"
+                onclick="triggerLoadStatus()" title="Muat daftar status dari server BPS">
+                📋 Muat Status
+            </button>
+            <!-- Dropdown status: tersembunyi sampai tombol diklik -->
+            <div id="statusDropdownWrapper" style="display:none;">
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary bg-body btn-sm dropdown-toggle text-start text-truncate" type="button" id="statusBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" style="min-width:160px; max-width: 200px;">
+                        — Semua Status —
+                    </button>
+                    <ul class="dropdown-menu shadow" id="statusMenu" style="max-height: 300px; overflow-y: auto;">
+                        <li><label class="dropdown-item text-muted"><em>— Memuat... —</em></label></li>
+                    </ul>
+                </div>
             </div>
         </div>
 
@@ -21,13 +27,21 @@
 
         <!-- Petugas Filter Group -->
         <div class="col-auto" id="filterPencacahGroup">
-            <div class="dropdown">
-                <button class="btn btn-outline-secondary bg-body btn-sm dropdown-toggle text-start text-truncate" type="button" id="pencacahBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" style="min-width:200px; max-width: 250px;">
-                    — Semua Petugas —
-                </button>
-                <ul class="dropdown-menu shadow" id="pencacahMenu" style="max-height: 300px; overflow-y: auto;">
-                    <li><label class="dropdown-item text-muted"><em>— Semua Petugas —</em></label></li>
-                </ul>
+            <!-- Tombol muat petugas: hilang setelah diklik, digantikan dropdown -->
+            <button id="btnLoadPetugas" class="btn btn-outline-secondary btn-sm"
+                onclick="triggerLoadPetugas()" title="Muat daftar petugas dari server BPS">
+                👤 Muat Petugas
+            </button>
+            <!-- Dropdown petugas: tersembunyi sampai tombol diklik -->
+            <div id="pencacahDropdownWrapper" style="display:none;">
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary bg-body btn-sm dropdown-toggle text-start text-truncate" type="button" id="pencacahBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" style="min-width:200px; max-width: 250px;">
+                        — Semua Petugas —
+                    </button>
+                    <ul class="dropdown-menu shadow" id="pencacahMenu" style="max-height: 300px; overflow-y: auto;">
+                        <li><label class="dropdown-item text-muted"><em>— Semua Petugas —</em></label></li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
@@ -61,9 +75,18 @@
 
         <div class="vr d-none d-sm-block align-self-center mx-1" style="height: 20px; opacity: 0.25;"></div>
 
+        <div class="vr d-none d-sm-block align-self-center mx-1" style="height: 20px; opacity: 0.25;"></div>
+
+        <div class="form-check form-switch mb-0 d-inline-flex align-items-center me-1" style="gap: 5px; height: 31px;" title="Mode crawl semua data tanpa filter. Filter diterapkan lokal setelah data selesai ditarik.">
+            <input class="form-check-input mb-0" type="checkbox" id="chkBatchCrawl" style="cursor: pointer;" onchange="onBatchCrawlToggle()">
+            <label class="form-check-label small text-muted mb-0" for="chkBatchCrawl" style="cursor: pointer; user-select: none;">Batch Crawl</label>
+        </div>
+
         <button id="btnFetchSampel" class="btn btn-primary btn-sm" onclick="fetchSampel()">Tampilkan</button>
         <button id="btnStopFetch" class="btn btn-outline-danger btn-sm" onclick="stopFetchSampel()" style="display:none;">Stop Fetch</button>
+        <button id="btnRetryNow" class="btn btn-warning btn-sm" onclick="retryNowFetch()" style="display:none;">⚡ Retry Now</button>
         <button id="btnClearCache" class="btn btn-secondary btn-sm" onclick="clearDataCache()" style="display:none;">Bersihkan Memori</button>
+        <button id="btnTestPagination" class="btn btn-outline-warning btn-sm" onclick="runPaginationTest()" title="Tampilkan 150 baris pertama secara langsung di tabel untuk mengecek urutan data secara manual">🔍 Preview 150 Baris</button>
         <div class="dropdown d-inline-block">
             <button id="btnDownloadDetail" class="btn btn-success btn-sm dropdown-toggle" data-bs-toggle="dropdown"
                 data-bs-strategy="fixed">Tindakan</button>

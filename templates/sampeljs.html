@@ -83,73 +83,365 @@
     }
 
     // ==========================================
+    // REGION HIERARCHY & AGGREGATION HELPERS (STEP 1)
+    // ==========================================
+
+    async function fetchChildRegions(targetLevel, parentFullCode = '') {
+        if (!currentGroupId) return [];
+        let url = `/fasihsm-fetcher/api/proxy/region/level/${targetLevel}?groupId=${currentGroupId}`;
+        if (parentFullCode && targetLevel > 1) {
+            const parentParamKey = `level${targetLevel - 1}FullCode`;
+            url += `&${parentParamKey}=${encodeURIComponent(parentFullCode)}`;
+        }
+        try {
+            const res = await fetch(url);
+            if (!res.ok) return [];
+            const data = await res.json();
+            let items = [];
+            if (Array.isArray(data)) items = data;
+            else if (data && data.data && Array.isArray(data.data)) items = data.data;
+            else if (data && data.content && Array.isArray(data.content)) items = data.content;
+
+            return items.map(item => ({
+                id: item.id || item.regionId || item.code,
+                code: item.code || item.regionCode || '',
+                fullCode: item.fullCode || item.full_code || item.code || '',
+                name: item.name || item.regionName || item.label || ''
+            }));
+        } catch (e) {
+            console.error(`[fetchChildRegions] Error level ${targetLevel}:`, e);
+            return [];
+        }
+    }
+
+    async function fetchRegionSampleCount(filterObj) {
+        if (!currentPeriodId) return 0;
+        let url = `/fasihsm-fetcher/api/sampel-status?period_id=${encodeURIComponent(currentPeriodId)}`;
+        if (filterObj.region_id) url += `&region_id=${encodeURIComponent(filterObj.region_id)}`;
+        if (filterObj.region_level) url += `&region_level=${encodeURIComponent(filterObj.region_level)}`;
+        try {
+            const res = await fetch(url);
+            if (!res.ok) return 0;
+            const data = await res.json();
+            return data.total || 0;
+        } catch (e) {
+            console.error('[fetchRegionSampleCount] Error:', e);
+            return 0;
+        }
+    }
+
+    // ==========================================
     // SAMPEL FETCH & TABLE RENDERING ENGINE
     // ==========================================
+
+    let isStopFetchRequested = false;
+    let cooldownTimerInterval = null;
+
+    function stopFetchSampel() {
+        isStopRequested = true;
+        isStopFetchRequested = true;
+        if (cooldownTimerInterval) clearInterval(cooldownTimerInterval);
+        if (typeof Swal !== 'undefined' && Swal.isVisible()) Swal.close();
+
+        const btn = document.getElementById('btnFetchSampel');
+        const stopBtn = document.getElementById('btnStopFetch');
+        if (btn) { btn.disabled = false; btn.textContent = 'Tampilkan'; }
+        if (stopBtn) { stopBtn.style.display = 'none'; }
+        showProgress(false);
+
+        if (currentPeriodId) {
+            fetch('/fasihsm-fetcher/api/sampel-stop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ period_id: currentPeriodId })
+            }).catch(e => console.error(e));
+        }
+    }
+
+    function showRateLimitCooldownModal(seconds = 120) {
+        return new Promise((resolve) => {
+            let remaining = seconds;
+
+            const getHtmlContent = (sec) => `
+                <div class="text-center py-2">
+                    <div class="fs-1 mb-2">⏳</div>
+                    <h5 class="fw-bold text-warning">Sedang Cooldown Rate Limit (429)</h5>
+                    <p class="text-muted small">Server BPS membatasi jumlah request. Menunggu cooldown otomatis:</p>
+                    <div class="display-6 fw-bold text-primary mb-3" id="cooldownTimerDisplay">${sec}s</div>
+                    <p class="small text-secondary mb-0">Proses fetch tidak dihentikan. Anda dapat menekan tombol di bawah untuk langsung melanjutkan fetch sekarang.</p>
+                </div>
+            `;
+
+            Swal.fire({
+                title: '',
+                html: getHtmlContent(remaining),
+                showCancelButton: true,
+                confirmButtonText: '⚡ Lanjutkan Fetch Sekarang',
+                cancelButtonText: '🛑 Stop Fetch',
+                confirmButtonColor: '#ffc107',
+                cancelButtonColor: '#dc3545',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                didOpen: () => {
+                    const timerEl = document.getElementById('cooldownTimerDisplay');
+                    cooldownTimerInterval = setInterval(() => {
+                        remaining--;
+                        if (timerEl) timerEl.textContent = `${remaining}s`;
+                        if (remaining <= 0) {
+                            clearInterval(cooldownTimerInterval);
+                            Swal.close();
+                            resolve({ action: 'continue' });
+                        }
+                    }, 1000);
+                },
+                willClose: () => {
+                    if (cooldownTimerInterval) clearInterval(cooldownTimerInterval);
+                }
+            }).then((result) => {
+                if (cooldownTimerInterval) clearInterval(cooldownTimerInterval);
+                if (result.isConfirmed) {
+                    resolve({ action: 'continue' });
+                } else if (result.dismiss === Swal.DismissReason.cancel) {
+                    stopFetchSampel();
+                    resolve({ action: 'stop' });
+                }
+            });
+        });
+    }
+
+    function fetchChunkWithPageSize150(filters) {
+        return new Promise((resolve, reject) => {
+            let chunkRows = [];
+            let hasError = null;
+
+            fetch('/fasihsm-fetcher/api/sampel-fetch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    period_id: currentPeriodId,
+                    survey_id: currentSurveyId,
+                    filters: {
+                        ...filters,
+                        limit: 150
+                    }
+                })
+            })
+                .then(res => {
+                    if (res.status === 429) {
+                        throw new Error('HTTP 429 Rate Limit');
+                    }
+                    if (!res.ok) {
+                        return res.text().then(t => { throw new Error(t || `HTTP ${res.status}`); });
+                    }
+                    if (!res.body) throw new Error('Response stream kosong');
+
+                    const reader = res.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+
+                    function read() {
+                        return reader.read().then(({ done, value }) => {
+                            if (done) {
+                                if (hasError) reject(new Error(hasError));
+                                else resolve(chunkRows);
+                                return;
+                            }
+                            buffer += decoder.decode(value, { stream: true });
+                            const parts = buffer.split('\n\n');
+                            buffer = parts.pop();
+
+                            for (const part of parts) {
+                                const line = part.replace(/^data: /, '').trim();
+                                if (!line) continue;
+                                try {
+                                    const msg = JSON.parse(line);
+                                    if (msg.type === 'rate_limit_wait') {
+                                        reject(new Error('HTTP 429 Rate Limit'));
+                                        return;
+                                    }
+                                    if (msg.done) {
+                                        if (msg.error) {
+                                            hasError = msg.error;
+                                        } else {
+                                            chunkRows = msg.rows || [];
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.error('Error parsing SSE chunk:', e);
+                                }
+                            }
+                            return read();
+                        }).catch(reject);
+                    }
+                    return read();
+                })
+                .catch(reject);
+        });
+    }
+
+    async function runHierarchicalRegionFetch() {
+        if (!currentPeriodId) { alert('Pilih survei terlebih dahulu.'); return; }
+
+        isStopFetchRequested = false;
+        isStopRequested = false;
+
+        const btn = document.getElementById('btnFetchSampel');
+        const stopBtn = document.getElementById('btnStopFetch');
+        const chkAppend = document.getElementById('chkAppendFilter');
+
+        if (chkAppend && !chkAppend.checked) {
+            chkAppend.checked = true;
+        }
+
+        if (btn) { btn.disabled = true; btn.textContent = 'Menganalisis Wilayah...'; }
+        if (stopBtn) { stopBtn.disabled = false; stopBtn.style.display = 'inline-block'; }
+
+        showProgress(true, 'Menyiapkan hierarki wilayah...', 0);
+
+        const startLevel = typeof currentLevel2Code !== 'undefined' && currentLevel2Code ? 3 : (typeof currentLevel1Code !== 'undefined' && currentLevel1Code ? 2 : 1);
+        const maxLevel = regionMetadata && regionMetadata.levelCount ? regionMetadata.levelCount : 4;
+        const baseFilters = collectCurrentSampelFilters();
+
+        let rootNodes = [];
+
+        for (let l = startLevel; l <= maxLevel; l++) {
+            const cbs = Array.from(document.querySelectorAll(`#regionMenu_${l} input[type="checkbox"]:checked`)).filter(cb => cb.value !== 'SEMUA');
+            if (cbs.length > 0) {
+                rootNodes = cbs.map(cb => ({
+                    id: cb.value,
+                    code: cb.getAttribute('data-code') || cb.value,
+                    fullCode: cb.getAttribute('data-full-code') || cb.getAttribute('data-code') || cb.value,
+                    name: getBaseLabelText(cb.closest('label')),
+                    level: l
+                }));
+                break;
+            }
+        }
+
+        if (rootNodes.length === 0) {
+            let parentCode = '';
+            if (startLevel === 3 && typeof currentLevel2Code !== 'undefined') parentCode = currentLevel2Code;
+            else if (startLevel === 2 && typeof currentLevel1Code !== 'undefined') parentCode = currentLevel1Code;
+
+            showProgress(true, `Memuat daftar subunit wilayah Level ${startLevel}...`, 5);
+            const topChildren = await fetchChildRegions(startLevel, parentCode);
+            if (topChildren.length > 0) {
+                rootNodes = topChildren.map(c => ({ ...c, level: startLevel }));
+            } else {
+                rootNodes = [{ id: '', code: '', fullCode: parentCode, name: 'Semua Wilayah', level: startLevel }];
+            }
+        }
+
+        let totalNodesProcessed = 0;
+        let totalSamplesFetched = 0;
+
+        async function processRegionNode(node) {
+            if (isStopFetchRequested) return;
+
+            const currentLevel = node.level;
+            const regionFilterObj = {
+                ...baseFilters,
+                region_id: node.id,
+                region_level: currentLevel
+            };
+
+            if (node.id && node.id !== 'SEMUA') {
+                regionFilterObj[`region${currentLevel}Id`] = [node.id];
+                regionFilterObj[`region${currentLevel}Code`] = [node.code || node.id];
+            }
+
+            showProgress(true, `🔍 Memeriksa jumlah sampel [${node.name || 'Wilayah'}]...`, Math.min(95, totalNodesProcessed * 5));
+
+            const sampleCount = await fetchRegionSampleCount(regionFilterObj);
+            console.log(`[RegionBreakdown] Level ${currentLevel} (${node.name}): Total = ${sampleCount}`);
+
+            if (sampleCount < 999 || currentLevel >= maxLevel) {
+                showProgress(true, `📥 Mengambil sampel [${node.name}] (${sampleCount} sampel)...`, Math.min(95, totalNodesProcessed * 5));
+
+                let success = false;
+                while (!success && !isStopFetchRequested) {
+                    try {
+                        const rows = await fetchChunkWithPageSize150(regionFilterObj);
+                        if (rows && Array.isArray(rows)) {
+                            setDatasetSource(rows, false);
+                            renderSampelRows(filterRowsLocally(getDatasetFilterSource(), collectCurrentSampelFilters()));
+                            if (typeof updateDropdownLocalCounts === 'function') updateDropdownLocalCounts();
+
+                            totalSamplesFetched += rows.length;
+                            totalNodesProcessed++;
+                            showProgress(true, `✅ Selesai [${node.name}] (+${rows.length} sampel | Total: ${totalSamplesFetched})`, Math.min(95, totalNodesProcessed * 5));
+                            success = true;
+                        }
+                    } catch (err) {
+                        if (isStopFetchRequested) return;
+                        const errText = String(err.message || err);
+                        if (errText.includes('429') || errText.includes('rate limit') || errText.includes('RATE_LIMIT')) {
+                            const modalRes = await showRateLimitCooldownModal(120);
+                            if (modalRes.action === 'stop') return;
+                        } else {
+                            console.error(`[ChunkFetchError] ${node.name}:`, err);
+                            await new Promise(r => setTimeout(r, 3000));
+                        }
+                    }
+                }
+
+                if (!isStopFetchRequested) {
+                    const pauseMs = 2000 + Math.floor(Math.random() * 1000);
+                    await new Promise(r => setTimeout(r, pauseMs));
+                }
+            } else {
+                const nextLevel = currentLevel + 1;
+                showProgress(true, `🔀 Memecah [${node.name}] (${sampleCount} sampel ≥ 999) ke Level ${nextLevel}...`, Math.min(95, totalNodesProcessed * 5));
+
+                const children = await fetchChildRegions(nextLevel, node.fullCode || node.code);
+                if (children && children.length > 0) {
+                    for (const childNode of children) {
+                        if (isStopFetchRequested) break;
+                        await processRegionNode({
+                            ...childNode,
+                            level: nextLevel
+                        });
+                    }
+                } else {
+                    try {
+                        const rows = await fetchChunkWithPageSize150(regionFilterObj);
+                        if (rows) {
+                            setDatasetSource(rows, false);
+                            renderSampelRows(filterRowsLocally(getDatasetFilterSource(), collectCurrentSampelFilters()));
+                            totalSamplesFetched += rows.length;
+                        }
+                    } catch (err) {
+                        console.error(`[FallbackFetchError] ${node.name}:`, err);
+                    }
+                }
+            }
+        }
+
+        for (const rootNode of rootNodes) {
+            if (isStopFetchRequested) break;
+            await processRegionNode(rootNode);
+        }
+
+        if (!isStopFetchRequested) {
+            showProgress(true, `🎉 Seluruh wilayah selesai diambil! Total ${totalSamplesFetched} sampel diappend.`, 100);
+            setTimeout(() => showProgress(false), 3500);
+        }
+
+        if (btn) { btn.disabled = false; btn.textContent = 'Tampilkan'; }
+        if (stopBtn) { stopBtn.style.display = 'none'; }
+    }
 
     function fetchSampel() {
         if (!currentPeriodId) { alert('Pilih survei terlebih dahulu.'); return; }
 
-        const filters = collectCurrentSampelFilters();
-
-        const btn = document.getElementById('btnFetchSampel');
-        const progress = document.getElementById('fetchProgress');
-        const stopBtn = document.getElementById('btnStopFetch');
-
-        function executeFetch(forceFetchAll = false) {
-            if (forceFetchAll) {
-                filters.confirm_fetchall = true;
-            }
-
-            if (isFetchAllComplete && !forceFetchAll) {
-                const filtered = filterRowsLocally(getDatasetFilterSource(), filters);
-                const chkAppend = document.getElementById('chkAppendFilter');
-                const shouldAppend = chkAppend ? chkAppend.checked : false;
-
-                let finalRows = [];
-                if (shouldAppend) {
-                    const combined = (datasetState.viewBaseRows || []).concat(filtered);
-                    // Deduplicate
-                    const seen = new Set();
-                    for (const r of combined) {
-                        if (r && r.sample_id && r.sample_id !== "-") {
-                            if (!seen.has(r.sample_id)) {
-                                seen.add(r.sample_id);
-                                finalRows.push(r);
-                            }
-                        } else {
-                            finalRows.push(r);
-                        }
-                    }
-                    // Re-index row numbers
-                    finalRows.forEach((r, idx) => {
-                        r.no = idx + 1;
-                    });
-                } else {
-                    finalRows = filtered;
-                }
-
-                renderSampelRows(finalRows);
-                return;
-            }
-
-            btn.disabled = true;
-            btn.textContent = 'Mengambil...';
-            if (stopBtn) {
-                stopBtn.disabled = false;
-                stopBtn.textContent = 'Stop Fetch';
-                stopBtn.style.display = 'inline-block';
-            }
-            if (progress) {
-                progress.textContent = 'Menyiapkan...';
-                progress.style.display = 'none';
-            }
-            showProgress(true, 'Menyiapkan...', 0);
-            __fetchSampelStream(filters, forceFetchAll, btn, progress, executeFetch);
+        const isBatch = document.getElementById('chkBatchCrawl') &&
+            document.getElementById('chkBatchCrawl').checked;
+        if (isBatch) {
+            fetchBatchCrawl();
+        } else {
+            runHierarchicalRegionFetch();
         }
-
-        // Finally, run it!
-        executeFetch();
-    } // end fetchSampel
+    }
 
     function collectCurrentSampelFilters() {
         const filters = {};
@@ -242,6 +534,17 @@
                             if (!line) continue;
                             try {
                                 const msg = JSON.parse(line);
+                                if (msg.type === "rate_limit_wait") {
+                                    const pct = (msg.progress !== undefined) ? Number(msg.progress) : highestProgress;
+                                    highestProgress = Math.max(highestProgress, pct);
+                                    showProgress(true, `⏳ Rate limit — retry dalam ${msg.remaining}s (${msg.fetched}/${msg.total} terambil)`, pct);
+                                    const retryBtn = document.getElementById('btnRetryNow');
+                                    if (retryBtn) retryBtn.style.display = 'inline-block';
+                                    continue;
+                                }
+                                const retryBtn = document.getElementById('btnRetryNow');
+                                if (retryBtn) retryBtn.style.display = 'none';
+
                                 if (msg.progress !== undefined && progress) {
                                     const nextProgress = Number(msg.progress) || 0;
                                     highestProgress = Math.max(highestProgress, nextProgress);
@@ -336,6 +639,8 @@
                     stopBtn.disabled = false;
                     stopBtn.textContent = 'Stop Fetch';
                 }
+                const retryNowBtn = document.getElementById('btnRetryNow');
+                if (retryNowBtn) retryNowBtn.style.display = 'none';
                 updateFetchButtonState();
                 if (progress) progress.style.display = 'none';
                 showProgress(false);
@@ -361,6 +666,27 @@
             if (stopBtn) {
                 stopBtn.disabled = false;
                 stopBtn.textContent = 'Stop Fetch';
+            }
+        });
+    }
+
+    function retryNowFetch() {
+        if (!currentPeriodId) return;
+        const retryBtn = document.getElementById('btnRetryNow');
+        if (retryBtn) {
+            retryBtn.disabled = true;
+            retryBtn.textContent = '⏳ Mencoba...';
+        }
+        fetch('/fasihsm-fetcher/api/sampel-retry-now', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ period_id: currentPeriodId })
+        }).catch(err => {
+            console.error('Retry now error:', err);
+        }).finally(() => {
+            if (retryBtn) {
+                retryBtn.disabled = false;
+                retryBtn.textContent = '⚡ Retry Now';
             }
         });
     }
@@ -456,7 +782,7 @@
         const cleanCount = r.sumClean || 0;
         const errorCount = r.sumError || 0;
         const remarkCount = r.sumRemark || 0;
-        
+
         let ketHtml = '';
         if (errorCount > 0) {
             ketHtml += `<span class="badge bg-danger me-1" title="${errorCount} Error">${errorCount} E</span>`;
@@ -788,4 +1114,236 @@
         buildDynamicTableHeaders();
         updateFetchButtonState();
     });
+
+    // ==========================================
+    // TOMBOL MANUAL: MUAT STATUS & PETUGAS
+    // ==========================================
+
+    function triggerLoadStatus() {
+        const btn = document.getElementById('btnLoadStatus');
+        const wrapper = document.getElementById('statusDropdownWrapper');
+        if (btn) btn.style.display = 'none';
+        if (wrapper) wrapper.style.display = '';
+        if (typeof loadSampelStatus === 'function' && currentPeriodId) {
+            loadSampelStatus(currentPeriodId);
+        }
+    }
+
+    function triggerLoadPetugas() {
+        const btn = document.getElementById('btnLoadPetugas');
+        const wrapper = document.getElementById('pencacahDropdownWrapper');
+        if (btn) btn.style.display = 'none';
+        if (wrapper) wrapper.style.display = '';
+        if (typeof loadPencacah === 'function') {
+            loadPencacah(null);
+        }
+    }
+
+    // ==========================================
+    // TOGGLE BATCH CRAWL
+    // ==========================================
+
+    function onBatchCrawlToggle() {
+        const isBatch = document.getElementById('chkBatchCrawl').checked;
+        // Sembunyikan semua filter saat mode batch — filter dilakukan lokal post-crawl
+        const groups = ['filterStatusGroup', 'filterWilayahGroup', 'filterPencacahGroup'];
+        groups.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = isBatch ? 'none' : '';
+        });
+        // Update label tombol Tampilkan
+        const btnFetch = document.getElementById('btnFetchSampel');
+        if (btnFetch) {
+            btnFetch.textContent = isBatch ? 'Mulai Batch Crawl' : 'Tampilkan';
+            btnFetch.className = isBatch ? 'btn btn-danger btn-sm' : 'btn btn-primary btn-sm';
+        }
+    }
+
+    // Override fetchSampel agar cabang ke batch crawl bila toggle aktif
+    const _originalFetchSampel = fetchSampel;
+    fetchSampel = function () {
+        const isBatch = document.getElementById('chkBatchCrawl') &&
+            document.getElementById('chkBatchCrawl').checked;
+        if (isBatch) {
+            fetchBatchCrawl();
+        } else {
+            _originalFetchSampel();
+        }
+    };
+
+    // ==========================================
+    // BATCH CRAWL STREAM
+    // ==========================================
+
+    function fetchBatchCrawl() {
+        if (!currentPeriodId) { alert('Pilih survei terlebih dahulu.'); return; }
+
+        const btn = document.getElementById('btnFetchSampel');
+        const stopBtn = document.getElementById('btnStopFetch');
+        const retryBtn = document.getElementById('btnRetryNow');
+        const progress = document.getElementById('fetchProgress');
+
+        btn.disabled = true;
+        btn.textContent = 'Batch Crawl...';
+        if (stopBtn) { stopBtn.disabled = false; stopBtn.textContent = 'Stop Fetch'; stopBtn.style.display = 'inline-block'; }
+        if (retryBtn) retryBtn.style.display = 'none';
+        showProgress(true, 'Memulai batch crawl...', 0);
+        if (typeof setFetchInProgress === 'function') setFetchInProgress(true);
+
+        let highestProgress = 0;
+
+        fetch('/fasihsm-fetcher/api/batch-crawl-stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ period_id: currentPeriodId })
+        })
+            .then(res => {
+                if (!res.ok) return res.text().then(t => { throw new Error(t || `HTTP ${res.status}`); });
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                function read() {
+                    return reader.read().then(({ done, value }) => {
+                        if (done) return;
+                        buffer += decoder.decode(value, { stream: true });
+                        const parts = buffer.split('\n\n');
+                        buffer = parts.pop();
+
+                        for (const part of parts) {
+                            const line = part.replace(/^data: /, '').trim();
+                            if (!line) continue;
+                            try {
+                                const msg = JSON.parse(line);
+
+                                if (msg.type === 'rate_limit_wait') {
+                                    const pct = msg.progress !== undefined ? Number(msg.progress) : highestProgress;
+                                    highestProgress = Math.max(highestProgress, pct);
+                                    showProgress(true, `\u23f3 Rate limit \u2014 retry dalam ${msg.remaining}s (${msg.fetched}/${msg.total} terambil)`, pct);
+                                    if (retryBtn) retryBtn.style.display = 'inline-block';
+                                    return read();
+                                }
+
+                                if (msg.type === 'batch_cooldown') {
+                                    const pct = msg.progress !== undefined ? Number(msg.progress) : highestProgress;
+                                    highestProgress = Math.max(highestProgress, pct);
+                                    const m = Math.floor(msg.remaining / 60);
+                                    const s = msg.remaining % 60;
+                                    const remStr = m > 0 ? `${m}m ${s}s` : `${s}s`;
+                                    showProgress(true,
+                                        `\u23f1\ufe0f Cooldown batch ${msg.batch} \u2014 lanjut dalam ${remStr} (${msg.fetched}/${msg.total} terambil)`,
+                                        pct
+                                    );
+                                    if (retryBtn) retryBtn.style.display = 'none';
+                                    return read();
+                                }
+
+                                if (retryBtn) retryBtn.style.display = 'none';
+
+                                if (msg.progress !== undefined) {
+                                    const nextPct = Number(msg.progress) || 0;
+                                    highestProgress = Math.max(highestProgress, nextPct);
+                                    showProgress(true, msg.message || 'Mengambil data...', highestProgress);
+                                }
+
+                                if (msg.done) {
+                                    if (typeof setFetchInProgress === 'function') setFetchInProgress(false);
+                                    btn.disabled = false;
+                                    btn.textContent = 'Mulai Batch Crawl';
+                                    if (stopBtn) stopBtn.style.display = 'none';
+                                    showProgress(false);
+
+                                    if (msg.error) {
+                                        if (msg.error.startsWith('WAF_CHALLENGE')) {
+                                            triggerAutoSessionSyncAndRetry(false, fetchBatchCrawl.bind(null));
+                                        } else {
+                                            Swal.fire({ title: 'Gagal', text: msg.error, icon: 'error' });
+                                        }
+                                        return;
+                                    }
+                                    if (msg.warning) {
+                                        Swal.fire({ title: 'Data Belum Lengkap', text: msg.warning, icon: 'warning' });
+                                    }
+
+                                    const fetchedRows = msg.rows || [];
+                                    // Batch crawl selalu unfiltered — tandai sebagai isFetchAllComplete
+                                    isFetchAllComplete = true;
+                                    globalDataCache = fetchedRows;
+                                    invalidateLocalCountIndex();
+                                    const chkAppend = document.getElementById('chkAppendFilter');
+                                    const shouldAppend = chkAppend && chkAppend.checked;
+                                    let finalRows = fetchedRows;
+                                    if (shouldAppend && datasetState.viewBaseRows && datasetState.viewBaseRows.length > 0) {
+                                        const combined = datasetState.viewBaseRows.concat(fetchedRows);
+                                        const seen = new Set();
+                                        finalRows = [];
+                                        for (const r of combined) {
+                                            const sid = r && r.sample_id && r.sample_id !== '-' ? r.sample_id : null;
+                                            if (sid) {
+                                                if (!seen.has(sid)) { seen.add(sid); finalRows.push(r); }
+                                            } else {
+                                                finalRows.push(r);
+                                            }
+                                        }
+                                        finalRows.forEach((r, i) => r.no = i + 1);
+                                    }
+                                    renderSampelRows(finalRows);
+                                    if (typeof updateDropdownLocalCounts === 'function') updateDropdownLocalCounts();
+                                    return;
+                                }
+                            } catch (e) {
+                                console.warn('[fetchBatchCrawl] parse error:', e, line);
+                            }
+                        }
+                        return read();
+                    });
+                }
+                return read();
+            })
+            .catch(err => {
+                if (typeof setFetchInProgress === 'function') setFetchInProgress(false);
+                btn.disabled = false;
+                btn.textContent = 'Mulai Batch Crawl';
+                if (stopBtn) stopBtn.style.display = 'none';
+                showProgress(false);
+                Swal.fire({ title: 'Gagal Fetch', text: err.message || String(err), icon: 'error' });
+            });
+    }
+
+    // ==========================================
+    // PREVIEW 150 BARIS (CEK MANUAL URUTAN)
+    // ==========================================
+
+    function runPaginationTest() {
+        if (!currentPeriodId) { alert('Pilih survei terlebih dahulu.'); return; }
+
+        const btn = document.getElementById('btnTestPagination');
+        const origText = btn.textContent;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Memuat...';
+
+        fetch(`/fasihsm-fetcher/api/test-pagination?period_id=${encodeURIComponent(currentPeriodId)}`)
+            .then(r => r.json())
+            .then(result => {
+                btn.disabled = false;
+                btn.textContent = origText;
+
+                if (result.error) {
+                    Swal.fire({ title: 'Gagal Memuat Preview', text: result.error, icon: 'error' });
+                    return;
+                }
+
+                const rows = result.rows || [];
+                globalDataCache = rows;
+                invalidateLocalCountIndex();
+                renderSampelRows(rows);
+                if (typeof updateDropdownLocalCounts === 'function') updateDropdownLocalCounts();
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.textContent = origText;
+                Swal.fire({ title: 'Error', text: err.message, icon: 'error' });
+            });
+    }
+
 </script>

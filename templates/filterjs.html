@@ -207,15 +207,41 @@ function refreshSampelStatus() {
 }
 
 function initRegionFilters() {
-    if (!currentGroupId || regionFiltersInitialized) return;
+    if (regionFiltersInitialized && regionMetadata) return;
+    
+    const fallbackMeta = {
+        levelCount: 4,
+        level: [
+            { id: 1, name: 'Provinsi' },
+            { id: 2, name: 'Kabupaten/Kota' },
+            { id: 3, name: 'Kecamatan' },
+            { id: 4, name: 'Desa/Kelurahan' }
+        ]
+    };
+
+    if (!currentGroupId) {
+        regionMetadata = fallbackMeta;
+        regionFiltersInitialized = true;
+        buildWilayahDropdowns();
+        return;
+    }
+
     regionFiltersInitialized = true;
     fetch(`/fasihsm-fetcher/api/proxy/region/metadata?groupId=${currentGroupId}`)
         .then(r => r.json())
         .then(res => {
-            if (res.data && res.data.level) {
-                regionMetadata = res.data;
-                buildWilayahDropdowns();
-            }
+            let meta = null;
+            if (res && res.data && res.data.level) meta = res.data;
+            else if (res && res.data && res.data.data && res.data.data.level) meta = res.data.data;
+            else if (res && res.level) meta = res;
+            
+            regionMetadata = meta || fallbackMeta;
+            buildWilayahDropdowns();
+        })
+        .catch(err => {
+            console.warn('[initRegionFilters] Proxy failed, using fallback:', err);
+            regionMetadata = fallbackMeta;
+            buildWilayahDropdowns();
         });
 }
 
@@ -224,12 +250,12 @@ function buildWilayahDropdowns() {
     if (!container || !regionMetadata) return;
     
     container.innerHTML = '';
-    const levels = regionMetadata.level;
+    const levels = regionMetadata.level || [];
+    const levelCount = regionMetadata.levelCount || (levels.length ? Math.max(...levels.map(l => l.id)) : 4);
     const startLevel = currentLevel2Code ? 3 : (typeof currentLevel1Code !== 'undefined' && currentLevel1Code ? 2 : 1);
     
-    for (let i = startLevel; i <= regionMetadata.levelCount; i++) {
-        const levelData = levels.find(l => l.id === i);
-        if (!levelData) continue;
+    for (let i = startLevel; i <= levelCount; i++) {
+        const levelData = levels.find(l => l.id === i) || { id: i, name: i === 3 ? 'Kecamatan' : (i === 4 ? 'Desa/Kelurahan' : `Level ${i}`) };
         
         const isFirst = i === startLevel;
         const displayStyle = isFirst ? 'block' : 'none';
@@ -248,25 +274,33 @@ function buildWilayahDropdowns() {
         container.innerHTML += html;
     }
     
-    for (let i = startLevel; i <= regionMetadata.levelCount; i++) {
-        const levelData = levels.find(l => l.id === i);
-        if (!levelData) continue;
+    for (let i = startLevel; i <= levelCount; i++) {
+        const levelData = levels.find(l => l.id === i) || { id: i, name: i === 3 ? 'Kecamatan' : (i === 4 ? 'Desa/Kelurahan' : `Level ${i}`) };
         
         const onChangeCallback = () => {
-            if (i < regionMetadata.levelCount) {
+            if (i < levelCount) {
                 loadDynamicRegionLevel(i + 1);
             }
-            // Cascading: reload pencacah based on selected region
-            const regionCode = getSelectedRegionCode();
-            loadPencacah(regionCode);
-            const regionId = getSelectedRegionId();
-            const regionLevel = getSelectedRegionLevel();
-            loadSampelStatus(currentPeriodId, regionId, regionLevel);
+            // Sinkron local count jika data sudah ada di cache lokal
+            if (typeof updateDropdownLocalCounts === 'function') {
+                updateDropdownLocalCounts();
+            }
+            // Pencacah & status TIDAK di-reload otomatis — gunakan tombol manual
         };
         attachCheckboxLogic(`regionMenu_${i}`, `regionBtn_${i}`, `— Semua ${levelData.name} —`, onChangeCallback);
     }
     
-    loadDynamicRegionLevel(startLevel);
+    // Lazy load: hanya fetch region saat dropdown pertama kali dibuka oleh user
+    const firstBtn = document.getElementById(`regionBtn_${startLevel}`);
+    if (firstBtn) {
+        let firstLevelLoaded = false;
+        firstBtn.addEventListener('show.bs.dropdown', function() {
+            if (!firstLevelLoaded && !isFetchInProgress) {
+                firstLevelLoaded = true;
+                loadDynamicRegionLevel(startLevel);
+            }
+        }, { once: false });
+    }
 }
 
 function getSelectedRegionCode() {
@@ -417,7 +451,8 @@ function loadPencacah(regionCode) {
             });
         });
         updateDropdownText('pencacahMenu', 'pencacahBtn', '— Semua Petugas —');
-        if (countItems.length > 0) updateLiveCounts(countItems, 'pencacahMenu', 'pencacahBtn', '— Semua Petugas —');
+        // updateLiveCounts tidak dipanggil otomatis — hanya local count dari cache lokal
+        updateDropdownLocalCounts('pencacahMenu');
         if (seen.size > 0) return; 
     }
 
@@ -542,9 +577,7 @@ document.addEventListener('DOMContentLoaded', function() {
     attachCheckboxLogic('statusMenu', 'statusBtn', '— Semua Status —');
     attachCheckboxLogic('pencacahMenu', 'pencacahBtn', '— Semua Petugas —');
 
-    if (typeof currentPeriodId !== 'undefined' && currentPeriodId) {
-        loadSampelStatus(currentPeriodId);
-    }
+    // Status & petugas TIDAK dimuat otomatis — gunakan tombol manual di UI
     toggleFilters();
 });
 </script>
